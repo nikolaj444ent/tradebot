@@ -1,0 +1,50 @@
+# Baseline research configuration.
+#
+# Treat every number here as a decision you can be wrong about. The costs
+# block in particular is where optimism hides: if you lower it to make a
+# backtest look better, you have not improved the strategy.
+
+data:
+  exchange: binance
+  # Start small. A universe of 4 liquid majors has enough cross-sectional
+  # signal to test an idea and not enough symbols to data-mine your way to a
+  # false positive.
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+  timeframe: 1h
+  start: "2021-01-01"
+  end: null
+  snapshot_dir: data/snapshots
+
+costs:
+  taker_fee_bps: 10.0       # Binance spot taker, no discounts assumed
+  half_spread_bps: 2.0      # liquid majors; raise sharply for alts
+  impact_bps_at_full_bar: 150.0
+  min_notional: 10.0
+
+risk:
+  max_weight_per_symbol: 0.30
+  max_gross_exposure: 1.0   # never levered
+  allow_short: false        # spot account: shorting is not possible
+  max_daily_loss_pct: 0.05  # hard halt, flattens the book
+  max_drawdown_pct: 0.20    # hard halt
+  max_turnover_per_bar: 0.5
+  # The authority on what may be traded. Must be written out explicitly.
+  symbol_allowlist:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+
+backtest:
+  initial_equity: 10000.0
+  cash_buffer: 0.02
+
+walkforward:
+  train_bars: 4320   # 180 days of 1h bars
+  test_bars: 1440    # 60 days
+  step_bars: 1440    # non-overlapping OOS windows
+  min_folds: 3

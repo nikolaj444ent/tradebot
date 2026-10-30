@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Secrets — never commit
+.env
+.env.local
+*.key
+
+# Market data snapshots are large and reproducible from the manifest.
+# The manifest itself IS committed, so a snapshot can be rebuilt byte-identically.
+data/snapshots/*
+!data/snapshots/.gitkeep
+!data/snapshots/*.manifest.json
+
+# Runtime state (paper-trading event log, equity curves)
+state/*
+!state/.gitkeep
+artifacts/

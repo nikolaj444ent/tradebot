@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradebot"
+version = "0.1.0"
+description = "Crypto spot strategy research harness: backtest, walk-forward validation, paper trading"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "pyyaml>=6",
+    "ccxt>=4.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["error::FutureWarning"]
