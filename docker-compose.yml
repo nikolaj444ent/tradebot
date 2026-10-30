@@ -1,0 +1,48 @@
+# Deployment for a single host (e.g. a Hetzner VPS).
+#
+# Nothing here can place a real order: there is no live execution path in this
+# image. `paper` is the long-running service, and it simulates fills against
+# live public market data.
+
+x-common: &common
+  build: .
+  env_file: [.env]
+  volumes:
+    - ./data/snapshots:/app/data/snapshots
+    - ./state:/app/state
+    - ./config:/app/config:ro
+
+services:
+  # One-shot: pin a market-data snapshot. Needs outbound exchange access.
+  fetch:
+    <<: *common
+    command: python -m tradebot.run.fetch
+    restart: "no"
+
+  # One-shot: measure a strategy against a pinned snapshot.
+  backtest:
+    <<: *common
+    command: python -m tradebot.run.backtest --strategy momentum
+    restart: "no"
+
+  # One-shot: walk-forward validation across the parameter grid.
+  walkforward:
+    <<: *common
+    command: python -m tradebot.run.walkforward --strategy momentum
+    restart: "no"
+
+  # One-shot: the test suite, as a deployment smoke check.
+  test:
+    <<: *common
+    command: pytest -q
+    restart: "no"
+
+  # Long-running paper trader. NOT YET IMPLEMENTED — see DESIGN.md section 10.
+  # Left defined (and not started by default) so the deployment shape is
+  # visible. `restart: unless-stopped` plus the heartbeat is what stops the
+  # process dying silently while holding a position.
+  paper:
+    <<: *common
+    command: python -m tradebot.run.paper
+    restart: unless-stopped
+    profiles: ["paper"]

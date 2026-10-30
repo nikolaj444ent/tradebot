@@ -29,8 +29,8 @@ risk:
   max_weight_per_symbol: 0.30
   max_gross_exposure: 1.0   # never levered
   allow_short: false        # spot account: shorting is not possible
-  max_daily_loss_pct: 0.05  # hard halt, flattens the book
-  max_drawdown_pct: 0.20    # hard halt
+  max_daily_loss_pct: 0.15  # circuit breaker, not risk management - see risk.py
+  max_drawdown_pct: 0.40
   max_turnover_per_bar: 0.5
   # The authority on what may be traded. Must be written out explicitly.
   symbol_allowlist:
