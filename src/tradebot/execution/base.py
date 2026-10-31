@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from ..types import Fill, Order
+from ..types import Fill, Order, PriceMap
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,8 +27,8 @@ class ExecutionContext:
     """
 
     ts: pd.Timestamp
-    ref_price: pd.Series
-    bar_volume_notional: pd.Series
+    ref_price: PriceMap
+    bar_volume_notional: PriceMap
     # Cash on hand when the bar opens. Orders were sized at the previous
     # bar's close, so by the time they execute the price has moved and a
     # fully-invested target can ask for more cash than exists. A real venue

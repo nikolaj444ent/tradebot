@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from ..types import Fill, Order, Side
+from ..types import Fill, Order, PriceMap, Side
 
 
 # Floor on any order's notional, independent of the exchange minimum. A
@@ -49,7 +49,7 @@ class Portfolio:
     def position_qty(self, symbol: str) -> float:
         return self.positions.get(symbol, 0.0)
 
-    def equity(self, prices: pd.Series) -> float:
+    def equity(self, prices: PriceMap) -> float:
         total = self.cash
         for sym, qty in self.positions.items():
             px = prices.get(sym)
@@ -57,7 +57,7 @@ class Portfolio:
                 total += qty * float(px)
         return total
 
-    def weights(self, prices: pd.Series) -> dict[str, float]:
+    def weights(self, prices: PriceMap) -> dict[str, float]:
         eq = self.equity(prices)
         if eq <= 0:
             return {}
@@ -97,7 +97,7 @@ class Portfolio:
     def orders_to_reach(
         self,
         targets: dict[str, float],
-        prices: pd.Series,
+        prices: PriceMap,
         *,
         ts: pd.Timestamp,
         run_id: str,
@@ -177,7 +177,7 @@ class Portfolio:
         return orders
 
     def flatten_orders(
-        self, prices: pd.Series, *, ts: pd.Timestamp, run_id: str, reason: str
+        self, prices: PriceMap, *, ts: pd.Timestamp, run_id: str, reason: str
     ) -> list[Order]:
         """Sell everything. Used when the risk gate halts the run."""
         orders = []

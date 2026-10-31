@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import uuid
 
+import numpy as np
 import pandas as pd
 
 from ..config import Config
@@ -34,9 +35,24 @@ from ..types import BacktestResult, Fill, MarketView, OHLCV_FIELDS, RiskViolatio
 from .portfolio import Portfolio
 
 
-def _view_at(frames: dict[str, pd.DataFrame], upto: int) -> MarketView:
-    """History ending at bar `upto`, inclusive. The future is simply absent."""
-    return MarketView(frames={f: frames[f].iloc[: upto + 1] for f in OHLCV_FIELDS})
+def _array_view_at(
+    arrays: dict[str, "np.ndarray"],
+    index: pd.DatetimeIndex,
+    columns: tuple[str, ...],
+    upto: int,
+) -> MarketView:
+    """History ending at bar `upto`, inclusive. The future is simply absent.
+
+    Backed by numpy rather than DataFrames: `arr[: upto + 1]` is a zero-copy
+    numpy view, so this allocates nothing per bar, while still ending at
+    `upto`. The guarantee is unchanged — indexing past the end raises, and a
+    strategy would have to reach outside its arguments to see bar `upto + 1`.
+    `MarketView` materialises DataFrames on demand for strategies that want
+    them, so `view.close` still works.
+    """
+    return MarketView.from_arrays(
+        {f: arrays[f][: upto + 1] for f in OHLCV_FIELDS}, index[: upto + 1], columns
+    )
 
 
 def run_backtest(
@@ -52,7 +68,6 @@ def run_backtest(
     snapshot_id: str = "unknown",
 ) -> BacktestResult:
     close = frames["close"]
-    open_ = frames["open"]
     volume = frames["volume"]
     n = len(close)
 
@@ -89,6 +104,27 @@ def run_backtest(
     # Notional volume per bar, for the impact model: price * units traded.
     bar_notional = (volume * close).fillna(0.0)
 
+    # The panel is converted to numpy ONCE, here, and the loop below reads rows
+    # out of it as plain dicts. The reason is measured rather than assumed:
+    # profiling a 6,000-bar run showed each `df.iloc[i]` row costing ~48us in
+    # pandas object construction, and the loop needs four of them per bar. The
+    # arithmetic is identical — same float64 values, same order of operations —
+    # so results are unchanged, which `tests/test_engine_golden.py` pins
+    # exactly. Everything downstream (portfolio, risk gate, execution adapter)
+    # only ever does `.get(symbol)`, `[symbol]` and `.items()`, which a dict
+    # supports and a Series supports; nothing had to learn a new interface.
+    symbols: tuple[str, ...] = tuple(close.columns)
+    panel = {
+        f: frames[f].to_numpy(dtype="float64", copy=False) for f in OHLCV_FIELDS
+    }
+    close_arr = panel["close"]
+    open_arr = panel["open"]
+    notional_arr = bar_notional.to_numpy(dtype="float64", copy=False)
+    bar_index = close.index
+
+    def row(arr: np.ndarray, i: int) -> dict[str, float]:
+        return dict(zip(symbols, arr[i].tolist()))
+
     equity_ts: list[pd.Timestamp] = []
     equity_vals: list[float] = []
     weight_rows: list[dict[str, float]] = []
@@ -102,9 +138,9 @@ def run_backtest(
     for i in range(start, n - 1):
         ts_decide = close.index[i]
         ts_fill = close.index[i + 1]
-        px_decide = close.iloc[i]
-        px_fill_ref = open_.iloc[i + 1]
-        px_mark = close.iloc[i + 1]
+        px_decide = row(close_arr, i)
+        px_fill_ref = row(open_arr, i + 1)
+        px_mark = row(close_arr, i + 1)
 
         equity = pf.equity(px_decide)
         gate.observe_equity(ts_decide, equity)
@@ -112,7 +148,7 @@ def run_backtest(
         ctx = ExecutionContext(
             ts=ts_fill,
             ref_price=px_fill_ref,
-            bar_volume_notional=bar_notional.iloc[i + 1],
+            bar_volume_notional=row(notional_arr, i + 1),
             available_cash=pf.cash,
         )
 
@@ -135,7 +171,7 @@ def run_backtest(
             weight_rows.append({})
             break
 
-        view = _view_at(frames, i)
+        view = _array_view_at(panel, bar_index, symbols, i)
         raw = strategy.target_weights(view)
         before = len(gate.violations)
         targets = gate.clamp(ts_decide, raw, pf.weights(px_decide))

@@ -1,0 +1,93 @@
+{
+  "eqw-trending-capped": {
+    "digest": "d9532c1bb029133eee2451b79b6af51e6cc2c141ebefbd152ef8194e2310f894",
+    "summary": {
+      "clamp_rate": 0.0,
+      "fees_paid": 74.72723443817199,
+      "final_equity": 3287.2410867372173,
+      "halt_reason": null,
+      "halted_at": null,
+      "n_equity_points": 1499,
+      "n_fills": 2857,
+      "n_violations": 382
+    }
+  },
+  "eqw-turnover-clamped": {
+    "digest": "249dc7dfdce781090914aedcea84c45348358df69c01ecf33e8513258c355f07",
+    "summary": {
+      "clamp_rate": 0.016680567139282735,
+      "fees_paid": 26.870075295788194,
+      "final_equity": 11134.966353376452,
+      "halt_reason": null,
+      "halted_at": null,
+      "n_equity_points": 1199,
+      "n_fills": 935,
+      "n_violations": 20
+    }
+  },
+  "hold-halting": {
+    "digest": "18fe1d3356d4d33a70ddb5eefec4afdf60c32b62e9c63d7e26995901b7a58142",
+    "summary": {
+      "clamp_rate": 0.0,
+      "fees_paid": 19.186095401333393,
+      "final_equity": 9581.174416322516,
+      "halt_reason": "daily loss 4.07% >= limit 3.00%",
+      "halted_at": "2022-01-01 05:00:00+00:00",
+      "n_equity_points": 6,
+      "n_fills": 8,
+      "n_violations": 1
+    }
+  },
+  "hold-trending": {
+    "digest": "2c55225d10c3ce53fd4ee206887508e7d9ec128eeca24f774f6179aa9663c10f",
+    "summary": {
+      "clamp_rate": 0.0,
+      "fees_paid": 9.904519864041758,
+      "final_equity": 3143.688688748801,
+      "halt_reason": null,
+      "halted_at": null,
+      "n_equity_points": 1499,
+      "n_fills": 15,
+      "n_violations": 303
+    }
+  },
+  "meanrev-meanreverting": {
+    "digest": "96b462592c688904120e019304aebe754908c33b3402650e4acda19f71a599d6",
+    "summary": {
+      "clamp_rate": 0.38816813700051894,
+      "fees_paid": 1788.9363797759613,
+      "final_equity": 15098.978359404256,
+      "halt_reason": null,
+      "halted_at": null,
+      "n_equity_points": 1927,
+      "n_fills": 878,
+      "n_violations": 856
+    }
+  },
+  "momentum-randomwalk-uncapped": {
+    "digest": "93961debab4034886906f56341ac36451704adc80c1ac38eed5cbd2f07047072",
+    "summary": {
+      "clamp_rate": 0.02075765438505449,
+      "fees_paid": 862.1521216883269,
+      "final_equity": 8765.092667925876,
+      "halt_reason": null,
+      "halted_at": null,
+      "n_equity_points": 1927,
+      "n_fills": 169,
+      "n_violations": 283
+    }
+  },
+  "momentum-trending-capped": {
+    "digest": "f8c01653c4307263b4af4944ef8814693b64d7cead44e3281d1fcfef7a33c714",
+    "summary": {
+      "clamp_rate": 0.9176319176319176,
+      "fees_paid": 285.87286909931134,
+      "final_equity": 42857.82747605466,
+      "halt_reason": null,
+      "halted_at": null,
+      "n_equity_points": 2331,
+      "n_fills": 2761,
+      "n_violations": 3582
+    }
+  }
+}

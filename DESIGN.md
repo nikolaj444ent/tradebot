@@ -325,6 +325,27 @@ weights each bar — that is `EqualWeightRebalanced`, a different and more
 expensive strategy. On trend-generated data they differ sharply (+31% versus
 −79%).
 
+**Measure before optimising, and pin the output first.** The engine was ~10x
+slower than it needed to be, and the written diagnosis here was wrong about
+why: it blamed per-bar `.iloc` access in the engine's own loop. A profiler said
+otherwise — **57% of total runtime was inside a single strategy method**,
+`CrossSectionalMomentum._held`, which recomputes trailing returns on every
+non-rebalance bar (deliberately, see §3) and was doing it with pandas
+`sort_values`/`dropna` on four numbers. Each pandas row object cost ~48 µs; the
+arithmetic it wrapped cost nanoseconds.
+
+Two things followed. First, the fix was mostly in the *strategies*, not the
+engine, which no amount of reading the code had suggested. Second, and more
+important: optimising a backtest engine is unusually dangerous, because a
+change that is 10x faster and 0.3% different silently invalidates every result
+recorded before it, and nothing in a returns series announces that it moved.
+So the output was pinned *first* — `tests/test_engine_golden.py` hashes the
+exact float repr of every equity point, fill and violation across seven cases
+spanning data regimes, strategy families, a halting run and a turnover-clamped
+run. Every step of the optimisation was then required to reproduce those
+digests exactly, which it does: the speedup changed no result. Threshold
+assertions ("Sharpe above 1") would not have caught a drift of this kind.
+
 **Pin your data.** Exchange history is not immutable; candles get revised and
 APIs backfill. One published project saw in-sample CAGR move from −0.7% to
 +1.8% between two downloads of nominally the same dataset. Snapshots are
@@ -355,10 +376,11 @@ Three notes from building this:
 - **Exchange APIs must be reachable from wherever this runs.** Claude's cloud
   sandbox blocks them by default, so snapshots were built from synthetic data
   here; the first real fetch has to happen on the host.
-- **The engine is a per-bar Python loop** using `.iloc` row access, which is
-  slow: a 6,000-bar backtest takes a few seconds, so a 50-combo × 5-fold
-  walk-forward is minutes, not seconds. Converting the panel to numpy arrays
-  up front is the obvious optimisation and is **not yet done** — see §11.
+- **The engine is a per-bar Python loop, now with the pandas taken out of the
+  hot path.** It runs at ~0.11 ms/bar: a 51k-bar (2021→now, hourly) backtest
+  takes ~5.5s and a 32-fold × 6-combo walk-forward about a minute. That is
+  ~10x faster than it was, and the change is pinned to produce bit-identical
+  results — see §9 and `tests/test_engine_golden.py`.
 - **State lives in a bind mount, not the image.** `state/` holds the journal,
   the book checkpoint and the halt sentinel, so a rebuild or redeploy must not
   lose it: the daemon's whole recovery story is reading that directory back.
@@ -377,8 +399,11 @@ Honest list, in rough priority order:
 2. **Alerting does not reach a human.** The heartbeat and `--watchdog` exist
    and the healthcheck goes unhealthy, but nothing pages anybody. Item 5 of
    the section 7 gate is therefore still open.
-3. **Engine performance.** Per-bar `.iloc` access dominates runtime. Vectorise
-   the panel into numpy before the loop.
+3. **Engine performance is adequate, not optimal.** ~0.11 ms/bar after the
+   numpy work (§9); a full walk-forward is about a minute. The remaining easy
+   win is that a walk-forward is embarrassingly parallel across
+   (fold × parameter combination) and currently runs on one core, which is
+   worth doing when a grid gets large enough to be annoying and not before.
 4. **No slippage model from real order books.** The square-root impact law is
    a reasonable prior, not a measurement. Paper trading against live quotes is
    what will calibrate it — see the volume-estimation note in section 8 for

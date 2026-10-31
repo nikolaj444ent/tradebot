@@ -17,6 +17,33 @@ from ..types import MarketView
 from .base import Strategy
 
 
+def _rank_desc(values: np.ndarray) -> np.ndarray:
+    """Indices of `values` in descending order, NaNs dropped.
+
+    Written to reproduce `Series.dropna().sort_values(ascending=False)` index
+    for index: pandas sorts the non-NaN values ascending with quicksort and
+    then reverses the whole indexer, so that is what this does. The point is
+    not elegance — it is that switching these strategies to numpy must not
+    change which asset gets picked when two returns tie, because
+    `tests/test_engine_golden.py` pins the output bit for bit.
+    """
+    keep = np.flatnonzero(~np.isnan(values))
+    return keep[np.argsort(values[keep], kind="quicksort")][::-1]
+
+
+def _rank_asc(values: np.ndarray) -> np.ndarray:
+    """Indices in ascending order, NaNs dropped: `dropna().sort_values()`."""
+    keep = np.flatnonzero(~np.isnan(values))
+    return keep[np.argsort(values[keep], kind="quicksort")]
+
+
+def _equal_weights(symbols, picked: np.ndarray) -> dict[str, float]:
+    if picked.size == 0:
+        return {}
+    w = 1.0 / picked.size
+    return {symbols[j]: w for j in picked}
+
+
 @dataclass(frozen=True, slots=True)
 class BuyAndHold(Strategy):
     """Buy equal notional on the first bar, then never trade again.
@@ -41,14 +68,16 @@ class BuyAndHold(Strategy):
     warmup: int = 1
 
     def target_weights(self, view: MarketView) -> dict[str, float]:
-        first = view.close.iloc[0]
-        last = view.close.iloc[-1]
-        growth = (last / first).replace([np.inf, -np.inf], np.nan).dropna()
-        growth = growth[growth > 0]
-        if growth.empty:
+        close = view.values("close")
+        symbols = view.symbols
+        with np.errstate(divide="ignore", invalid="ignore"):
+            growth = close[-1] / close[0]
+        # `.replace([inf, -inf], nan).dropna()` then `> 0`, in one mask.
+        keep = np.flatnonzero(np.isfinite(growth) & (growth > 0.0))
+        if keep.size == 0:
             return {}
-        total = float(growth.sum())
-        return {s: float(g) / total for s, g in growth.items()}
+        total = float(growth[keep].sum())
+        return {symbols[j]: float(growth[j]) / total for j in keep}
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,48 +116,43 @@ class CrossSectionalMomentum(Strategy):
         return self.lookback + 1
 
     def target_weights(self, view: MarketView) -> dict[str, float]:
-        close = view.close
-        if len(close) < self.lookback + 1:
+        close = view.values("close")
+        n = len(close)
+        if n < self.lookback + 1:
             return {}
 
         # Only act on rebalance bars. Between them, return the same targets so
         # the engine naturally holds (it compares target to current and finds
         # nothing to do).
-        if self.rebalance_every > 1 and (len(close) - 1) % self.rebalance_every != 0:
+        if self.rebalance_every > 1 and (n - 1) % self.rebalance_every != 0:
             return self._held(view)
 
-        trailing = close.iloc[-1] / close.iloc[-1 - self.lookback] - 1.0
-        trailing = trailing.dropna()
-        if trailing.empty:
-            return {}
-        winners = trailing.sort_values(ascending=False).head(self.n_long)
+        return self._winners(close, n - 1, view.symbols)
+
+    def _winners(self, close: np.ndarray, at: int, symbols) -> dict[str, float]:
+        """Equal weight across the top `n_long` by trailing return at bar `at`."""
+        with np.errstate(divide="ignore", invalid="ignore"):
+            trailing = close[at] / close[at - self.lookback] - 1.0
+        ranked = _rank_desc(trailing)[: self.n_long]
         # Positive momentum only: if nothing is rising, sit in cash rather than
         # holding the least-bad asset.
-        winners = winners[winners > 0]
-        if winners.empty:
-            return {}
-        w = 1.0 / len(winners)
-        return {s: w for s in winners.index}
+        return _equal_weights(symbols, ranked[trailing[ranked] > 0.0])
 
     def _held(self, view: MarketView) -> dict[str, float]:
         """Targets from the most recent rebalance bar, recomputed from history.
 
         Recomputed rather than remembered: see `Strategy` rule 1. This is
-        slightly wasteful and entirely worth it.
+        slightly wasteful and entirely worth it — and since it runs on every
+        non-rebalance bar, it was also the single most expensive line in a
+        backtest until it stopped going through pandas. Profiling a 6,000-bar
+        run put 57% of total time inside this method.
         """
-        close = view.close
+        close = view.values("close")
         n = len(close)
         last_rebal = ((n - 1) // self.rebalance_every) * self.rebalance_every
         if last_rebal < self.lookback:
             return {}
-        trailing = close.iloc[last_rebal] / close.iloc[last_rebal - self.lookback] - 1.0
-        trailing = trailing.dropna()
-        winners = trailing.sort_values(ascending=False).head(self.n_long)
-        winners = winners[winners > 0]
-        if winners.empty:
-            return {}
-        w = 1.0 / len(winners)
-        return {s: w for s in winners.index}
+        return self._winners(close, last_rebal, view.symbols)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,18 +172,20 @@ class ZScoreMeanReversion(Strategy):
         return self.lookback + 1
 
     def target_weights(self, view: MarketView) -> dict[str, float]:
-        close = view.close
+        close = view.values("close")
         if len(close) < self.lookback + 1:
             return {}
-        window = close.iloc[-self.lookback :]
-        mean = window.mean()
-        sd = window.std(ddof=1)
-        last = close.iloc[-1]
+        window = close[-self.lookback :]
+        # nanmean/nanstd rather than mean/std, because pandas skips NaN by
+        # default and this has to keep doing exactly what it did before.
+        mean = np.nanmean(window, axis=0)
+        sd = np.nanstd(window, axis=0, ddof=1)
         with np.errstate(divide="ignore", invalid="ignore"):
-            z = (last - mean) / sd.replace(0.0, np.nan)
-        z = z.dropna()
-        picks = z[z <= self.entry_z].sort_values().head(self.max_positions)
-        if picks.empty:
-            return {}
-        w = 1.0 / len(picks)
-        return {s: w for s in picks.index}
+            # A zero standard deviation means a flat price, not a huge z-score.
+            z = (close[-1] - mean) / np.where(sd == 0.0, np.nan, sd)
+        # Sorting ascending and then filtering is the same set as filtering and
+        # then sorting, because the filter is a threshold on the sort key.
+        ranked = _rank_asc(z)
+        return _equal_weights(
+            view.symbols, ranked[z[ranked] <= self.entry_z][: self.max_positions]
+        )

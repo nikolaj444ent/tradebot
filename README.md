@@ -37,7 +37,7 @@ the truth quickly."**
 
 ```bash
 pip install -e ".[dev]"
-pytest                                    # 78 tests, ~2 min
+pytest                                    # 98 tests, ~25 s
 
 # No network needed — synthetic data, proves the plumbing:
 python -m tradebot.run.backtest --synthetic trending --strategy momentum
@@ -122,6 +122,8 @@ src/tradebot/
   engine/
     portfolio.py     spot accounting: no shorting, no negative cash
     backtest.py      decide at bar i, fill at i+1 open, mark at i+1 close
+                     (~0.11 ms/bar; output pinned bit-for-bit by
+                      tests/test_engine_golden.py)
   validation/
     metrics.py       Sharpe + standard error, PSR, deflated Sharpe
     walkforward.py   rolling windows + parameter-stability reporting
@@ -156,7 +158,7 @@ at all (DESIGN.md §7).
 Working: data pinning and validation, cost model, risk gate, backtest engine,
 walk-forward, PBO, deflated Sharpe, **and the paper-trading daemon** —
 journalled state, startup reconciliation, durable idempotency, sticky halts,
-heartbeat and watchdog. 78 tests.
+heartbeat and watchdog. 98 tests.
 
 **Nothing has been measured on real data yet.** Exchange APIs are not
 reachable from the sandbox this was built in, so every number produced so far
