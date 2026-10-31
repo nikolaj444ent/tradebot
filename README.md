@@ -141,6 +141,7 @@ src/tradebot/
 ## Deployment (Hetzner)
 
 ```bash
+# No .env and no API keys needed: paper mode reads public data only.
 docker compose run --rm fetch         # pin a snapshot
 docker compose run --rm backtest      # measure
 docker compose run --rm paper-replay  # dry-run the daemon against pinned data

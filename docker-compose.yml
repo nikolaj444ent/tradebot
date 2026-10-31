@@ -6,7 +6,13 @@
 
 x-common: &common
   build: .
-  env_file: [.env]
+  # Optional on purpose. Paper mode needs no credentials at all — it reads
+  # public market data and simulates fills locally — so a fresh clone must not
+  # fail before it starts. Without `required: false`, every command here dies
+  # on "env file .env not found", including the very first `fetch`.
+  env_file:
+    - path: .env
+      required: false
   volumes:
     - ./data/snapshots:/app/data/snapshots
     - ./state:/app/state
