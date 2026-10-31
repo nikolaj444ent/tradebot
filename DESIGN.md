@@ -160,9 +160,23 @@ waiting for a restart.
 On startup, a paper or live run must fetch actual venue positions, compare
 against internal state, and **halt on mismatch** rather than trade blind.
 
+How much of that the paper daemon can actually do, stated plainly: the book is
+rebuilt by replaying every recorded fill, and compared against the `book.json`
+checkpoint. That catches a truncated journal, a hand-edited book, and a crash
+between the two writes. It is **not** the real check, because in paper mode
+there is no independent counterparty to ask — `PaperExecution.venue_positions()`
+returns `None` on purpose rather than handing back our own numbers dressed up
+as a venue reply, which would make the check a tautology that passes while
+telling you nothing. `reconcile()` reports which comparison it actually ran,
+and a live adapter must pass real venue positions into it.
+
 And the failure that actually costs money is not a bad trade. It is the
 process **dying silently while holding a position**. A heartbeat and a
 dead-man's switch are not optional extras for anything that runs unattended.
+The daemon writes `heartbeat.json` every bar; `--watchdog` reads it from
+*outside* the process, because nothing inside a dead process can report its
+own death. It is wired to the Compose healthcheck. Routing that signal to a
+human is still unbuilt, and is item 5 of the live-trading gate below.
 
 ---
 
@@ -189,7 +203,65 @@ paper.
 
 ---
 
-## 8. Validation discipline
+## 8. The paper daemon
+
+Same strategy object, same gate, same accounting, same cost model as a
+backtest — and the loop body is deliberately the same six steps in the same
+order (`engine/paper.py` mirrors `engine/backtest.py`):
+
+    at the close of bar k:  mark equity at bar k's close   <- marks the
+                                                              previous
+                                                              decision's fill
+                            observe equity in the gate
+                            check the stops
+                            strategy sees history up to and including k
+                            gate clamps what it asked for
+                            orders sized at bar k's close
+    immediately after:      they fill at bar k+1's OPEN, with costs
+
+Parity is asserted, not asserted-to: replay a panel through the paper loop and
+the equity curve equals the backtest's on that panel, bar for bar, fills
+included (`tests/test_paper.py`). If that test ever fails, every subsequent
+paper-versus-backtest comparison is measuring a code difference instead of a
+market one, and nobody would be able to tell which.
+
+Four decisions in there that are easy to get wrong:
+
+**The unclosed bar is never served.** `fetch_ohlcv` returns the in-progress
+candle last. Its close changes every few seconds, so feeding it to a strategy
+makes the same question return different answers, which silently breaks both
+reproducibility and parity. It is dropped every poll.
+
+**The fill price is the new bar's open, not the last trade.** Once bar `k+1`
+has started, its *open* is already fixed and will never be revised, even
+though its close has not happened. Reading that one field is both faithful to
+the section 3 contract and reproducible; a ticker price is neither. The ticker
+is a fallback for the seconds before the new bar prints.
+
+**Volume at fill time is unknowable, so it is estimated, and the estimate is
+labelled.** The backtest uses the actual volume of the bar it fills into. Live,
+that bar has not finished, so the daemon uses the bar that just closed as its
+estimator and marks the quote `volume_is_estimate`. The fully pessimistic
+alternative (assume zero volume, hence maximum impact) is available as
+`volume_mode="worst_case"` and is what section 4 requires where there is no
+information at all — but here there *is* information, and pretending otherwise
+would put a 150 bps impact charge on every paper fill and make the paper run
+incomparable to its backtest. **This is the most likely source of
+paper-versus-backtest slippage divergence, and measuring it is one of the
+things this phase is for.**
+
+**A halt is sticky.** The gate flattens, the daemon writes a `HALTED` sentinel
+and exits 2, and the next start refuses. This matters because
+`restart: unless-stopped` would otherwise bring the process straight back up
+and resume trading — a breaker that trips and immediately re-closes. Clearing
+it is an explicit human command. Relatedly, the drawdown high-water mark is
+replayed from the journal on startup: rebuild the gate from nothing each time
+and a crash-looping process would declare every new, lower equity to be its
+peak and could never breach a drawdown limit however far it fell.
+
+---
+
+## 9. Validation discipline
 
 **Sample size first.** The standard error of an annualised Sharpe is
 ≈ √(bars_per_year / n):
@@ -260,17 +332,25 @@ content-addressed, manifests are committed, and `load()` re-verifies the hash.
 
 ---
 
-## 9. Deployment
+## 10. Deployment
 
 Target is a Hetzner box: Docker + Compose, restart on failure.
 
 ```bash
-docker compose run --rm fetch      # pin a data snapshot (needs exchange access)
-docker compose run --rm backtest   # measure
-docker compose up -d paper         # long-running paper trader
+docker compose run --rm fetch         # pin a data snapshot (needs exchange access)
+docker compose run --rm backtest      # measure
+docker compose run --rm paper-replay  # dry-run the daemon against pinned data
+docker compose --profile paper up -d  # long-running paper trader
 ```
 
-Two notes from building this:
+The `paper` service restarts `unless-stopped`, which is why the halt sentinel
+has to be sticky (section 8), and its healthcheck is `--watchdog`, which is
+why the heartbeat has to be written from inside and read from outside
+(section 6). Run `paper-replay` before trusting a deployment: it exercises the
+journal, the startup reconciliation and the gate at CPU speed rather than one
+bar an hour.
+
+Three notes from building this:
 
 - **Exchange APIs must be reachable from wherever this runs.** Claude's cloud
   sandbox blocks them by default, so snapshots were built from synthetic data
@@ -278,26 +358,37 @@ Two notes from building this:
 - **The engine is a per-bar Python loop** using `.iloc` row access, which is
   slow: a 6,000-bar backtest takes a few seconds, so a 50-combo × 5-fold
   walk-forward is minutes, not seconds. Converting the panel to numpy arrays
-  up front is the obvious optimisation and is **not yet done** — see §10.
+  up front is the obvious optimisation and is **not yet done** — see §11.
+- **State lives in a bind mount, not the image.** `state/` holds the journal,
+  the book checkpoint and the halt sentinel, so a rebuild or redeploy must not
+  lose it: the daemon's whole recovery story is reading that directory back.
 
 ---
 
-## 10. Known limitations
+## 11. Known limitations
 
 Honest list, in rough priority order:
 
-1. **The paper-trading daemon is not written yet.** The adapter interface,
-   risk gate, accounting and state model are all in place and mode-agnostic,
-   but the long-running loop (live quote polling, reconciliation on startup,
-   heartbeat) is the next piece of work.
-2. **Engine performance.** Per-bar `.iloc` access dominates runtime. Vectorise
+1. **Nothing has been measured on real data.** Exchange APIs are unreachable
+   from the sandbox this was built in, so every result so far is from
+   synthetic data and proves plumbing, not profitability. Pinning a real
+   snapshot on the host is the next piece of work, and until it happens there
+   are no findings here at all.
+2. **Alerting does not reach a human.** The heartbeat and `--watchdog` exist
+   and the healthcheck goes unhealthy, but nothing pages anybody. Item 5 of
+   the section 7 gate is therefore still open.
+3. **Engine performance.** Per-bar `.iloc` access dominates runtime. Vectorise
    the panel into numpy before the loop.
-3. **No slippage model from real order books.** The square-root impact law is
+4. **No slippage model from real order books.** The square-root impact law is
    a reasonable prior, not a measurement. Paper trading against live quotes is
-   what will calibrate it.
-4. **Single-venue, spot, long-only.** No margin, no shorting, no funding
+   what will calibrate it — see the volume-estimation note in section 8 for
+   where the divergence will first show up.
+5. **Paper reconciliation has no counterparty.** It verifies our journal
+   against our own checkpoint, which is an integrity check, not a venue
+   check. See section 6.
+6. **Single-venue, spot, long-only.** No margin, no shorting, no funding
    rates, no cross-venue execution. All deliberate for a first system.
-5. **No regime labelling.** Results are reported over whole samples; splitting
+7. **No regime labelling.** Results are reported over whole samples; splitting
    by volatility regime would be more informative.
-6. **Synthetic-data results prove plumbing, not profitability.** Momentum
+8. **Synthetic-data results prove plumbing, not profitability.** Momentum
    scoring 14x on trend-generated data is a tautology, not a finding.

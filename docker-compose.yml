@@ -37,12 +37,40 @@ services:
     command: pytest -q
     restart: "no"
 
-  # Long-running paper trader. NOT YET IMPLEMENTED — see DESIGN.md section 10.
-  # Left defined (and not started by default) so the deployment shape is
-  # visible. `restart: unless-stopped` plus the heartbeat is what stops the
-  # process dying silently while holding a position.
+  # One-shot: full dry run of the paper daemon against pinned data. Exercises
+  # the journal, startup reconciliation and risk gate at CPU speed instead of
+  # one bar an hour. Run this before trusting a deployment.
+  paper-replay:
+    <<: *common
+    command: >
+      python -m tradebot.run.paper --replay --strategy momentum
+      --run-name dryrun --max-bars 2000
+    restart: "no"
+
+  # Long-running paper trader. Simulated fills against live public quotes;
+  # there is no live order path in this image.
+  #
+  # Two things here are load-bearing, not boilerplate:
+  #
+  # `restart: unless-stopped` plus the halt sentinel. The daemon exits 2 when
+  # the risk gate halts it, and Compose will restart it — so the sentinel in
+  # state/ is what stops it resuming trading seconds later. A breaker that
+  # trips and immediately re-closes is decoration. Clearing it is deliberate:
+  #   docker compose run --rm paper python -m tradebot.run.paper --clear-halt
+  #
+  # The healthcheck runs the watchdog, because a process cannot report its own
+  # death. It goes unhealthy on a stale heartbeat or a halt, which is the
+  # signal an alerting integration should hang off. Compose will not page
+  # anyone by itself — wiring `--watchdog` to something that reaches a human is
+  # the last item of DESIGN.md section 7 and is the operator's job.
   paper:
     <<: *common
-    command: python -m tradebot.run.paper
+    command: python -m tradebot.run.paper --strategy momentum
     restart: unless-stopped
     profiles: ["paper"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "tradebot.run.paper", "--watchdog"]
+      interval: 5m
+      timeout: 30s
+      retries: 2
+      start_period: 2h
