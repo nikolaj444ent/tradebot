@@ -9,6 +9,9 @@ raises on import, and there are no live credentials in the config. See
 [DESIGN.md §7](DESIGN.md#7-live-trading-is-absent-deliberately) for the gate
 that would have to be cleared to change that.
 
+Picking this up fresh? [**HANDOFF.md**](HANDOFF.md) is the short version of
+where things stand and what to do next.
+
 Read [**DESIGN.md**](DESIGN.md) before changing anything. It is the rulebook:
 the no-lookahead contract, the cost model, what the risk limits are actually
 for, and the validation discipline.
