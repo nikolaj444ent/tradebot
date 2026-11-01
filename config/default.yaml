@@ -48,3 +48,9 @@ walkforward:
   test_bars: 1440    # 60 days
   step_bars: 1440    # non-overlapping OOS windows
   min_folds: 3
+
+paper:
+  state_dir: state
+  poll_seconds: 30              # wake, poll for a new bar, touch the heartbeat
+  grace_seconds: 15             # let the exchange finalise a candle before reading it
+  heartbeat_max_age_seconds: 180  # older than this = dead daemon, watchdog fires

@@ -270,6 +270,13 @@ docker compose run --rm backtest   # measure
 docker compose up -d paper         # long-running paper trader
 ```
 
+The paper service's `restart: unless-stopped` recovers crashes; its
+healthcheck reads the daemon's heartbeat file, which is the dead-man's switch
+from §6. The two compose deliberately: a crash restarts into a journal
+reconciliation, while a risk halt writes a `HALTED` marker that makes every
+restart exit immediately until a human runs `--clear-halt`. Set
+`TRADELAB_ALERT_WEBHOOK` in `.env` so halts reach a phone, not just a log.
+
 Two notes from building this:
 
 - **Exchange APIs must be reachable from wherever this runs.** Claude's cloud
@@ -286,10 +293,18 @@ Two notes from building this:
 
 Honest list, in rough priority order:
 
-1. **The paper-trading daemon is not written yet.** The adapter interface,
-   risk gate, accounting and state model are all in place and mode-agnostic,
-   but the long-running loop (live quote polling, reconciliation on startup,
-   heartbeat) is the next piece of work.
+1. **The paper-trading daemon has not yet survived real time.** The daemon is
+   written (`paper/daemon.py`): journaled state, deterministic order ids,
+   idempotent restarts, startup reconciliation that halts on mismatch,
+   persistent halts, heartbeat plus webhook alerting, and a replay mode that
+   reproduces `run_backtest` fill-for-fill (`tests/test_paper.py`). What it
+   does not yet have is weeks of unattended runtime against live quotes —
+   exchange outages, candle revisions, clock skew — which is what actually
+   validates a daemon. Honest sub-limits of the live path, all by design,
+   none yet calibrated: fills price off the ticker's `last` rather than a
+   real order book; the impact model's bar volume is estimated from the
+   previous closed bar; bars missed while the daemon is down are skipped,
+   not backfilled (deciding on them would be trading the past).
 2. **Engine performance.** Per-bar `.iloc` access dominates runtime. Vectorise
    the panel into numpy before the loop.
 3. **No slippage model from real order books.** The square-root impact law is

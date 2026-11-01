@@ -45,6 +45,22 @@ class BacktestConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class PaperConfig:
+    # Where journals, snapshots, heartbeats and halt markers live. One
+    # subdirectory per --run-name under <state_dir>/paper/.
+    state_dir: Path = Path("state")
+    # How often the daemon wakes to poll for a new bar and touch the
+    # heartbeat. Must be well under heartbeat_max_age_seconds.
+    poll_seconds: int = 30
+    # Wait this long after a bar's close before trusting the candle: exchanges
+    # need a moment to finalise it.
+    grace_seconds: int = 15
+    # A heartbeat older than this means the daemon is dead or wedged; the
+    # docker healthcheck (and any outside watchdog) keys off it.
+    heartbeat_max_age_seconds: int = 180
+
+
+@dataclass(frozen=True, slots=True)
 class WalkForwardConfig:
     train_bars: int = 24 * 180  # 180 days at 1h
     test_bars: int = 24 * 60  # 60 days at 1h
@@ -59,6 +75,7 @@ class Config:
     risk: RiskLimits = field(default_factory=RiskLimits)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     walkforward: WalkForwardConfig = field(default_factory=WalkForwardConfig)
+    paper: PaperConfig = field(default_factory=PaperConfig)
 
     @property
     def bars_per_year(self) -> int:
@@ -79,6 +96,13 @@ class Config:
                 f"there deliberately."
             )
         _ = self.bars_per_year
+        if self.paper.poll_seconds <= 0:
+            raise ValueError("paper.poll_seconds must be positive")
+        if self.paper.heartbeat_max_age_seconds <= self.paper.poll_seconds:
+            raise ValueError(
+                "paper.heartbeat_max_age_seconds must exceed paper.poll_seconds, "
+                "or every healthy daemon looks dead to the watchdog."
+            )
         n_sym = len(self.data.symbols)
         if self.risk.max_weight_per_symbol * n_sym < self.risk.max_gross_exposure:
             raise ValueError(
@@ -103,12 +127,17 @@ def load_config(path: str | Path) -> Config:
     if "symbol_allowlist" in risk_raw:
         risk_raw["symbol_allowlist"] = frozenset(risk_raw["symbol_allowlist"])
 
+    paper_raw = dict(raw.get("paper", {}))
+    if "state_dir" in paper_raw:
+        paper_raw["state_dir"] = Path(paper_raw["state_dir"])
+
     cfg = Config(
         data=DataConfig(**data_raw),
         costs=CostModel(**raw.get("costs", {})),
         risk=RiskLimits(**risk_raw),
         backtest=BacktestConfig(**raw.get("backtest", {})),
         walkforward=WalkForwardConfig(**raw.get("walkforward", {})),
+        paper=PaperConfig(**paper_raw),
     )
     cfg.validate()
     return cfg

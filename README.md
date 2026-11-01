@@ -46,6 +46,11 @@ python -m tradebot.run.backtest --synthetic trending --strategy momentum
 python -m tradebot.run.fetch              # pins a content-addressed snapshot
 python -m tradebot.run.backtest --strategy momentum --n-trials 12
 python -m tradebot.run.walkforward --strategy momentum
+
+# Paper trading (public live quotes, simulated fills, no keys):
+python -m tradebot.run.paper --strategy momentum
+# ... or rehearse the daemon end to end with no network:
+python -m tradebot.run.paper --replay-synthetic trending
 ```
 
 `--n-trials` is how many variants you have tried **in total** for this idea.
@@ -91,7 +96,12 @@ src/tradebot/
   execution/
     sim.py           backtest fills
     live.py          raises on import, deliberately
-  run/               CLIs: fetch, backtest, walkforward
+  paper/
+    daemon.py        the long-running loop; same decision path as the backtest
+    feed.py          closed bars only: live ccxt polling, or deterministic replay
+    journal.py       append-only journal, snapshot, heartbeat, HALTED marker
+    alerts.py        stderr + optional webhook; halts must reach a human
+  run/               CLIs: fetch, backtest, walkforward, paper
 ```
 
 ## Deployment (Hetzner)
@@ -99,16 +109,22 @@ src/tradebot/
 ```bash
 docker compose run --rm fetch       # pin a snapshot
 docker compose run --rm backtest    # measure
-docker compose up -d paper          # long-running paper trader (not yet built)
+docker compose up -d paper          # long-running paper trader
 ```
+
+The paper service restarts on crashes and carries a healthcheck wired to the
+daemon's heartbeat file. A run halted by the risk gate stays halted across
+restarts until a human runs `--clear-halt` — Docker cannot quietly resume it.
 
 ## Status
 
 Working: data pinning and validation, cost model, risk gate, backtest engine,
-walk-forward, PBO, deflated Sharpe, 45 tests.
+walk-forward, PBO, deflated Sharpe, and the paper-trading daemon (journaled
+state, idempotent restarts, startup reconciliation, persistent halts,
+heartbeat). 55 tests, including a proof that the daemon reproduces
+`run_backtest` fill-for-fill on replayed data.
 
-**Not yet built: the paper-trading daemon.** The adapter interface, risk gate,
-accounting and idempotency model are all in place and mode-agnostic; the
-long-running loop (live quote polling, startup reconciliation, heartbeat) is
-the next piece of work. See [DESIGN.md §10](DESIGN.md#10-known-limitations)
+**Not yet done: a paper run on real data.** The daemon exists; what it has
+not had yet is weeks of unattended runtime against live quotes, which is what
+actually validates it. See [DESIGN.md §10](DESIGN.md#10-known-limitations)
 for the full honest list of limitations.

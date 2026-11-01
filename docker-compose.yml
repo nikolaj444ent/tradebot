@@ -37,12 +37,19 @@ services:
     command: pytest -q
     restart: "no"
 
-  # Long-running paper trader. NOT YET IMPLEMENTED — see DESIGN.md section 10.
-  # Left defined (and not started by default) so the deployment shape is
-  # visible. `restart: unless-stopped` plus the heartbeat is what stops the
-  # process dying silently while holding a position.
+  # Long-running paper trader: live public quotes, simulated fills.
+  # `restart: unless-stopped` recovers crashes; the healthcheck is the
+  # dead-man's switch (a daemon that stops heartbeating is dead, not quiet).
+  # A run HALTED by the risk gate exits immediately on every restart until a
+  # human clears it: `docker compose run --rm paper --clear-halt`.
   paper:
     <<: *common
-    command: python -m tradebot.run.paper
+    command: python -m tradebot.run.paper --strategy momentum
     restart: unless-stopped
     profiles: ["paper"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "tradebot.run.paper", "--heartbeat-check"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 300s
