@@ -1,0 +1,52 @@
+# Paper-trading DEMO configuration: 5-minute bars, meant for *watching the
+# plumbing* — fills landing, marks ticking, the dashboard moving — not for
+# research. At this frequency a rebalancing strategy is a fee machine
+# (DESIGN.md §4: a round trip costs ~54 bps), which is exactly why no result
+# from this config means anything beyond "the pipes work".
+
+data:
+  exchange: binance
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+  timeframe: 5m
+  start: "2026-01-01"       # only used by fetch; the daemon bootstraps itself
+  end: null
+  snapshot_dir: data/snapshots
+
+costs:
+  taker_fee_bps: 10.0
+  half_spread_bps: 2.0
+  impact_bps_at_full_bar: 150.0
+  min_notional: 10.0
+
+risk:
+  max_weight_per_symbol: 0.30
+  max_gross_exposure: 1.0
+  allow_short: false
+  max_daily_loss_pct: 0.15
+  max_drawdown_pct: 0.40
+  max_turnover_per_bar: 0.5
+  symbol_allowlist:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+
+backtest:
+  initial_equity: 10000.0
+  cash_buffer: 0.02
+
+walkforward:
+  train_bars: 4320
+  test_bars: 1440
+  step_bars: 1440
+  min_folds: 3
+
+paper:
+  state_dir: state
+  poll_seconds: 15              # 5m bars: poll faster so a new bar is caught quickly
+  grace_seconds: 10
+  heartbeat_max_age_seconds: 120
