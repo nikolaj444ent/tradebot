@@ -21,12 +21,13 @@ the tool report `n_trials`.
 | Date | Idea | Variants | Data snapshot | OOS Sharpe | Deflated Sharpe | PBO | Verdict |
 |---|---|---|---|---|---|---|---|
 | 2026-10-30 | harness smoke test: cross-sectional momentum on synthetic trend data | 6-point grid | `synthetic:trending:seed0` | n/a | n/a | n/a | Not a finding. Momentum scoring well on trend-generated data is a tautology; this only proved the plumbing runs end to end. |
+| 2026-11-01 | cross-sectional momentum, walk-forward over the 6-point grid | 192 trials (6 combos × 32 folds) | `729e29a33b276ac9` (51,128 1h bars, 2021..2026-11) | 0.68 ± 0.44 (t=1.56) | **0.00** | 0.60 | **No edge.** OOS Sharpe not distinguishable from zero over 5.26 years; deflated Sharpe zero after 192 trials; PBO ≈ 0.6 means the in-sample winner picks *worse* than a coin flip out of sample; lookback churns across folds (CV 0.49); OOS max drawdown 85%. The harness did its job: idea killed in 12 minutes. The live paper run of momentum continues as a *daemon* validation exercise only, not a promoted strategy. |
 
 ## Running total
 
-- **Ideas evaluated on real data:** 0
-- **Cumulative trials on real data:** 0
-- **Promoted to paper trading:** 0
+- **Ideas evaluated on real data:** 1
+- **Cumulative trials on real data:** 192
+- **Promoted to paper trading:** 0 (the running momentum paper run validates the daemon, not the strategy)
 - **Promoted to live:** 0 (live trading is not implemented; see DESIGN.md §7)
 
 ## Notes on what counts as a new idea
