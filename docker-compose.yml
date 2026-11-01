@@ -53,3 +53,15 @@ services:
       timeout: 15s
       retries: 3
       start_period: 300s
+
+  # Read-only dashboard over state/paper/: equity curve, trades, positions,
+  # heartbeat and halt status. Stdlib server, no credentials, writes nothing.
+  # Bound to localhost on the host; reach it over an SSH tunnel rather than
+  # exposing it to the internet.
+  dashboard:
+    <<: *common
+    command: python -m tradebot.run.dashboard --host 0.0.0.0
+    restart: unless-stopped
+    profiles: ["paper"]
+    ports:
+      - "127.0.0.1:8060:8060"

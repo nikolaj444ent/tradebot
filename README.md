@@ -51,6 +51,9 @@ python -m tradebot.run.walkforward --strategy momentum
 python -m tradebot.run.paper --strategy momentum
 # ... or rehearse the daemon end to end with no network:
 python -m tradebot.run.paper --replay-synthetic trending
+
+# Watch any paper run in a browser (equity curve, trades, heartbeat):
+python -m tradebot.run.dashboard        # http://127.0.0.1:8060
 ```
 
 `--n-trials` is how many variants you have tried **in total** for this idea.
@@ -101,7 +104,9 @@ src/tradebot/
     feed.py          closed bars only: live ccxt polling, or deterministic replay
     journal.py       append-only journal, snapshot, heartbeat, HALTED marker
     alerts.py        stderr + optional webhook; halts must reach a human
-  run/               CLIs: fetch, backtest, walkforward, paper
+    report.py        read-only fold of a run's journal, for the dashboard
+    dashboard.html   the dashboard page: stdlib-served, no CDN, light/dark
+  run/               CLIs: fetch, backtest, walkforward, paper, dashboard
 ```
 
 ## Deployment (Hetzner)
