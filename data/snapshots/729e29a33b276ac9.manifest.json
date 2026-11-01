@@ -1,0 +1,20 @@
+{
+  "snapshot_id": "729e29a33b276ac9",
+  "schema_version": 1,
+  "exchange": "binance",
+  "timeframe": "1h",
+  "source": "ccxt:binance:2021-01-01..now",
+  "symbols": [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "BNB/USDT"
+  ],
+  "n_bars": 51128,
+  "first_bar": "2021-01-01T00:00:00+00:00",
+  "last_bar": "2026-11-01T21:00:00+00:00",
+  "fetched_at": "2026-11-01T21:34:37.648590+00:00",
+  "validation_problems": [
+    "7 irregular bar interval(s); modal interval is 0 days 01:00:00"
+  ]
+}
