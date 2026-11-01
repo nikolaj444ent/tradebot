@@ -1,0 +1,56 @@
+# 1-minute "scalper" paper config — run for FUN and for TRUTH, not for profit.
+#
+# The prediction, straight from DESIGN.md §4: a round trip costs ~54 bps at
+# these cost assumptions, and one-minute mean-reversion edges are far smaller
+# than that. So this run's expected outcome is a slow, visible bleed of fees.
+# That is the point: it is the cost model telling the truth in real time, on
+# live prices, where you can watch it on the dashboard. If this run ever
+# looks profitable over any meaningful stretch, distrust the harness before
+# you trust the strategy.
+
+data:
+  exchange: binance
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+  timeframe: 1m
+  start: "2026-01-01"       # only used by fetch; the daemon bootstraps itself
+  end: null
+  snapshot_dir: data/snapshots
+
+costs:
+  taker_fee_bps: 10.0
+  half_spread_bps: 2.0
+  impact_bps_at_full_bar: 150.0
+  min_notional: 10.0
+
+risk:
+  max_weight_per_symbol: 0.30
+  max_gross_exposure: 1.0
+  allow_short: false
+  max_daily_loss_pct: 0.15
+  max_drawdown_pct: 0.40
+  max_turnover_per_bar: 0.5
+  symbol_allowlist:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+
+backtest:
+  initial_equity: 10000.0
+  cash_buffer: 0.02
+
+walkforward:
+  train_bars: 4320
+  test_bars: 1440
+  step_bars: 1440
+  min_folds: 3
+
+paper:
+  state_dir: state
+  poll_seconds: 5               # 1m bars: check for a new candle every 5s
+  grace_seconds: 5
+  heartbeat_max_age_seconds: 60
